@@ -1,27 +1,16 @@
+#define TRIG_PIN 5
+#define ECHO_PIN 18
 #include <WiFi.h>
 #include <HTTPClient.h>
-
-#define SOIL_PIN 34
-#define RAIN_PIN 35
-#define DHTPIN 27
-#define RELAY_PIN 26
-
-#include "DHT.h"
-#define DHTTYPE DHT11
-DHT dht(DHTPIN, DHTTYPE);
-
 const char* ssid = "Your_SSID";
 const char* password = "Your_PASSWORD";
-const String serverUrl = "http://your-server-ip/api/update";
 
 void setup() {
   Serial.begin(115200);
-  dht.begin();
-  pinMode(SOIL_PIN, INPUT);
-  pinMode(RAIN_PIN, INPUT);
-  pinMode(RELAY_PIN, OUTPUT);
-  WiFi.begin(ssid, password);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
 
+  WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     Serial.println("Connecting to WiFi...");
@@ -30,32 +19,29 @@ void setup() {
 }
 
 void loop() {
-  int soilValue = analogRead(SOIL_PIN);
-  bool rainDetected = digitalRead(RAIN_PIN) == LOW;
-  float temp = dht.readTemperature();
-  float humidity = dht.readHumidity();
+  long duration;
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  duration = pulseIn(ECHO_PIN, HIGH);
 
-  int moisturePercent = map(soilValue, 4095, 1500, 0, 100);
-
-  bool irrigation = (moisturePercent < 40 && !rainDetected);
-  digitalWrite(RELAY_PIN, irrigation ? HIGH : LOW);
+  float distance = duration * 0.034 / 2;
+  Serial.print("Distance: ");
+  Serial.println(distance);
 
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
-    http.begin(serverUrl);
+    http.begin("http://your-server-ip/api/update-vehicle"); // replace with your server
     http.addHeader("Content-Type", "application/json");
-    String json = "{\"soil_moisture\":" + String(moisturePercent) +
-                  ",\"temperature\":" + String(temp) +
-                  ",\"humidity\":" + String(humidity) +
-                  ",\"rain_detected\":" + String(rainDetected ? "true" : "false") +
-                  ",\"irrigation_on\":" + String(irrigation ? "true" : "false") + "}";
-
-    int code = http.POST(json);
+    String payload = "{\"distance\":" + String(distance) + "}";
+    int code = http.POST(payload);
     String response = http.getString();
     Serial.println(code);
     Serial.println(response);
     http.end();
   }
 
-  delay(10000);
+  delay(5000); 
 }
